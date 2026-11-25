@@ -1,0 +1,17 @@
+{
+  "listen": "127.0.0.1:8080",
+  "state_file": "/var/lib/pve-backup-gui/state.json",
+  "schedule_timezone": "Europe/Vienna",
+  "webhook_env": "",
+  "smtp": null,
+  "clusters": [
+    {
+      "id": "produktion",
+      "name": "Produktion",
+      "url": "https://pve01.example.net:8006",
+      "token_id": "backup-gui@pve!gui",
+      "secret_env": "PVE_PROD_TOKEN",
+      "ca_file": "/etc/pve-backup-gui/pve-root-ca.pem"
+    }
+  ]
+}

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PVE Backup GUI</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<section id="login" class="login-screen" hidden>
+  <form id="login-form" class="card login-card">
+    <div><h1>PVE Backup</h1><p>Melden Sie sich an, um Backups zu verwalten.</p></div>
+    <label>Benutzername<input id="login-name" autocomplete="username" required></label>
+    <label>Passwort<input id="login-password" type="password" autocomplete="current-password" required></label>
+    <p id="login-message" class="form-error" role="alert" hidden></p>
+    <button class="button primary" type="submit">Anmelden</button>
+  </form>
+</section>
+<aside class="rail" id="app-nav" hidden>
+  <div class="brand"><span class="brandmark" aria-hidden="true">↧</span><div><strong>PVE Backup</strong><small>Proxmox VE</small></div></div>
+  <nav aria-label="Hauptnavigation">
+    <a href="#inventory" aria-current="page"><span aria-hidden="true">▤</span> Inventar</a>
+    <a href="#plans"><span aria-hidden="true">☷</span> Backuppläne</a>
+    <a href="#history"><span aria-hidden="true">◷</span> Verlauf</a>
+    <a href="#users"><span aria-hidden="true">♙</span> Benutzer</a>
+  </nav>
+  <div class="rail-bottom">
+    <div id="webhook-state"></div>
+    <div id="release-version" class="release-version"></div>
+  </div>
+</aside>
+<main id="app-main" hidden>
+  <header class="topbar">
+    <span id="breadcrumb">Inventar</span>
+    <span id="demo" class="badge amber" hidden>Demo</span>
+    <button type="button" id="refresh" class="button quiet">↻ Aktualisieren</button>
+    <button type="button" id="logout" class="button quiet">Abmelden</button>
+  </header>
+  <div class="shell">
+    <div id="message" role="status" hidden></div>
+    <section id="inventory" class="page">
+      <div class="page-title"><div><h1>Virtuelle Maschinen</h1><p>Wählen Sie Gäste und legen Sie ihre Backup-Reihenfolge fest.</p></div>
+      <label class="cluster">Cluster<select id="cluster" aria-label="Cluster"></select></label></div>
+      <div class="metrics">
+        <article><span>Gäste im Cluster</span><strong id="guest-count">–</strong></article>
+        <article><span>Ausgewählt</span><strong id="selected-count">0</strong></article>
+        <article><span>Läufe in Warteschlange</span><strong id="queued-count">0</strong></article>
+      </div>
+      <div class="inventory-grid">
+        <section class="card">
+          <header class="card-head"><h2>VMs und Container</h2><div class="inventory-tools">
+            <label class="check"><input id="running-only" type="checkbox"> Nur laufende Gäste</label>
+            <label class="check"><input id="unplanned-only" type="checkbox"> Nur Gäste ohne Backupplan</label>
+            <input type="search" id="search" placeholder="Name, VMID oder Knoten" aria-label="Gäste suchen">
+          </div></header>
+          <div class="scroll"><table>
+            <thead><tr><th><input type="checkbox" id="select-all" aria-label="Alle sichtbaren Gäste auswählen"></th><th>VMID</th><th>Name</th><th>Typ</th><th>Knoten</th><th>Status</th></tr></thead>
+            <tbody id="guests"></tbody>
+          </table></div>
+        </section>
+        <section class="card editor">
+          <header class="card-head"><h2 id="editor-title">Backupplan erstellen</h2></header>
+          <form id="plan-form">
+            <label>Planname<input id="plan-name" name="name" placeholder="z. B. Produktion nachts" maxlength="100" required></label>
+            <label>Backup-Ziel<select id="storage" name="storage" required disabled></select></label>
+            <div><h3>Reihenfolge</h3><ol id="order" class="order"></ol><p class="muted" id="empty-order">Wählen Sie Gäste in der Liste aus.</p></div>
+            <label class="check"><input id="continue" type="checkbox"> Nach bestätigtem Fehler fortsetzen</label>
+            <button id="save" class="button primary" type="submit" disabled>Plan speichern</button>
+            <button id="reset-editor" class="button quiet" type="button" hidden>Bearbeitung verwerfen</button>
+          </form>
+        </section>
+      </div>
+    </section>
+    <section id="plans" class="page" hidden>
+      <div class="page-title"><div><h1>Backuppläne</h1><p>Gespeicherte Pläne sofort starten oder Termine festlegen.</p></div><a href="#inventory" class="button primary">Inventar öffnen</a></div>
+      <div id="plan-list" class="stack"></div>
+    </section>
+    <section id="history" class="page" hidden>
+      <div class="page-title"><div><h1>Backup-Verlauf</h1><p>Läufe, Ergebnisse pro Gast und Proxmox-Task-Logs.</p></div>
+        <button id="purge-open" class="button quiet" type="button">Verlauf bereinigen</button></div>
+      <div id="hold" class="callout" hidden>Die Warteschlange ist angehalten. Prüfen Sie den unklaren Task in Proxmox und geben Sie die Warteschlange danach im betroffenen Lauf frei.</div>
+      <div id="run-list" class="stack"></div>
+    </section>
+    <section id="users" class="page" hidden>
+      <div class="page-title"><div><h1>Benutzer</h1><p>Alle Konten haben dieselben Rechte.</p></div>
+        <button id="user-add" class="button primary" type="button">Benutzer anlegen</button></div>
+      <div id="user-list" class="stack"></div>
+    </section>
+  </div>
+</main>
+<dialog id="purge-dialog" aria-labelledby="purge-title">
+  <form id="purge-form">
+    <h2 id="purge-title">Verlauf bereinigen</h2>
+    <p>Entfernt abgeschlossene Verlaufseinträge und ihre lokalen Logs. Maßgeblich ist das Ende des Laufs.</p>
+    <label>Älter als (Tage)<input id="purge-days" type="number" required min="1" max="36500" step="1" value="90"></label>
+    <p id="purge-message" class="form-error" role="alert" hidden></p>
+    <div class="actions"><button id="purge-cancel" class="button quiet" type="button">Abbrechen</button>
+      <button class="button danger" type="submit">Endgültig bereinigen</button></div>
+  </form>
+</dialog>
+<dialog id="user-dialog" aria-labelledby="user-title">
+  <form id="user-form">
+    <h2 id="user-title"></h2>
+    <label>Benutzername<input id="user-name" autocomplete="off" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}" required></label>
+    <label>Neues Passwort<input id="user-password" type="password" autocomplete="new-password" minlength="15" required></label>
+    <p id="user-message" class="form-error" role="alert" hidden></p>
+    <div class="actions"><button id="user-cancel" class="button quiet" type="button">Abbrechen</button>
+      <button class="button primary" type="submit">Speichern</button></div>
+  </form>
+</dialog>
+<dialog id="schedule-dialog" aria-labelledby="schedule-title">
+  <form id="schedule-form">
+    <h2 id="schedule-title">Backup terminieren</h2><p id="schedule-name"></p>
+    <label>Wiederholung<select id="schedule-mode">
+      <option value="once">Einmalig</option><option value="daily">Täglich</option><option value="weekly">Ausgewählte Wochentage</option>
+    </select></label>
+    <label id="schedule-once">Startzeit in Ihrer Browser-Zeitzone<input type="datetime-local" id="schedule-time" required></label>
+    <label id="schedule-repeat" hidden><span id="schedule-zone"></span><input id="schedule-clock" type="time" step="60"></label>
+    <fieldset id="schedule-days" hidden>
+      <legend>Wochentage</legend>
+      <div class="weekdays">
+        <label><input type="checkbox" value="1"> Mo</label><label><input type="checkbox" value="2"> Di</label>
+        <label><input type="checkbox" value="3"> Mi</label><label><input type="checkbox" value="4"> Do</label>
+        <label><input type="checkbox" value="5"> Fr</label><label><input type="checkbox" value="6"> Sa</label>
+        <label><input type="checkbox" value="0"> So</label>
+      </div>
+    </fieldset>
+    <p id="schedule-message" role="alert" hidden></p>
+    <div class="actions">
+      <button class="button quiet" id="schedule-delete" type="button" hidden>Serie löschen</button>
+      <button class="button quiet" id="schedule-cancel" type="button">Schließen</button>
+      <button class="button primary" id="schedule-submit" type="submit">Einreihen</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="log-dialog">
+  <header class="card-head"><h2 id="log-title">Task-Log</h2><button class="button quiet" id="log-close">Schließen</button></header>
+  <p id="log-info" class="muted"></p>
+  <pre id="log-text" tabindex="0"></pre>
+  <footer class="actions"><button id="log-refresh" class="button quiet">↻ Nachladen</button></footer>
+</dialog>
+</body>
+</html>

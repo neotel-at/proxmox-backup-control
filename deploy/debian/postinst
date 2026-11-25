@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+if [ "$1" = configure ]; then
+    if ! getent group pve-backup-gui >/dev/null; then
+        addgroup --quiet --system pve-backup-gui
+    fi
+    if ! getent passwd pve-backup-gui >/dev/null; then
+        adduser --quiet --system --ingroup pve-backup-gui --home /var/lib/pve-backup-gui \
+            --no-create-home --shell /usr/sbin/nologin pve-backup-gui
+    fi
+    install -d -m 0700 -o pve-backup-gui -g pve-backup-gui /var/lib/pve-backup-gui
+    install -d -m 0750 -o root -g pve-backup-gui /etc/pve-backup-gui
+    if [ ! -e /etc/pve-backup-gui/secret.env ]; then
+        install -m 0600 /dev/null /etc/pve-backup-gui/secret.env
+    fi
+
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        if [ -n "${2:-}" ] && systemctl is-active --quiet pve-backup-gui.service; then
+            deb-systemd-invoke restart pve-backup-gui.service
+        fi
+    fi
+fi
