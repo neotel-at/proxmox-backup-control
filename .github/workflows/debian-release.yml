@@ -1,0 +1,62 @@
+name: Debian release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - VERSION
+      - .github/workflows/debian-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: debian-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.25.x'
+          cache: false
+      - name: Test and build Debian package
+        id: build
+        env:
+          DEB_ARCH: amd64
+          GOPROXY: 'off'
+        run: |
+          version=$(cat VERSION)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          go test -mod=vendor -race ./...
+          sh deploy/debian/build.sh dist
+          package="dist/pve-backup-gui_${version}_${DEB_ARCH}.deb"
+          test "$(dpkg-deb -f "$package" Version)" = "$version"
+          test "$(dpkg-deb -f "$package" Architecture)" = "$DEB_ARCH"
+          dpkg-deb --extract "$package" "$RUNNER_TEMP/package"
+          test "$("$RUNNER_TEMP/package/usr/bin/pve-backup-gui" -version)" = "$version"
+          (cd dist && sha256sum "$(basename "$package")" > SHA256SUMS)
+          {
+            echo "tag=v$version"
+            echo "package=$package"
+          } >> "$GITHUB_OUTPUT"
+      - name: Publish release with Debian package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.build.outputs.tag }}
+          PACKAGE: ${{ steps.build.outputs.package }}
+        run: |
+          gh release create "$TAG" "$PACKAGE" dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "PVE Backup GUI $TAG" \
+            --notes "Debian-Paket für amd64 mit Prüfsumme. Änderungen und Upgrade-Hinweise stehen in CHANGELOG.md und README.md."
