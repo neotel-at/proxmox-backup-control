@@ -345,12 +345,13 @@ func (a *app) storage(w http.ResponseWriter, r *http.Request) {
 }
 func (a *app) savePlan(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
-		Cluster  string `json:"cluster"`
-		Storage  string `json:"storage"`
-		IDs      []int  `json:"vmids"`
-		Continue bool   `json:"continue_on_error"`
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Cluster     string `json:"cluster"`
+		Storage     string `json:"storage"`
+		IDs         []int  `json:"vmids"`
+		Continue    bool   `json:"continue_on_error"`
+		MailOnError *bool  `json:"mail_on_error"`
 	}
 	if !body(w, r, &req) {
 		return
@@ -370,7 +371,7 @@ func (a *app) savePlan(w http.ResponseWriter, r *http.Request) {
 	for _, g := range guests {
 		index[g.ID] = g
 	}
-	plan := Plan{ID: req.ID, Name: req.Name, Cluster: req.Cluster, Storage: req.Storage, Continue: req.Continue}
+	plan := Plan{ID: req.ID, Name: req.Name, Cluster: req.Cluster, Storage: req.Storage, Continue: req.Continue, MailOnError: req.MailOnError}
 	for _, id := range req.IDs {
 		guest, ok := index[id]
 		if !ok || guest.Node == "" {
@@ -402,6 +403,9 @@ func (a *app) savePlan(w http.ResponseWriter, r *http.Request) {
 		}
 		for i := range s.Plans {
 			if s.Plans[i].ID == plan.ID {
+				if plan.MailOnError == nil {
+					plan.MailOnError = s.Plans[i].MailOnError
+				}
 				s.Plans[i] = plan
 				return nil
 			}

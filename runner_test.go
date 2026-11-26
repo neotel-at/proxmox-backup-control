@@ -42,7 +42,7 @@ func TestProxmoxSequentialBackupAndArchivedLogs(t *testing.T) {
 				t.Error(err)
 			}
 			if r.Method != "POST" || r.Form.Get("remove") != "0" || r.Form.Get("mode") != "snapshot" || r.Form.Get("storage") != "pbs" ||
-				r.Form.Get("notes-template") != "{{guestname}}" {
+				r.Form.Get("notes-template") != "{{guestname}}" || r.Form.Get("notification-mode") != "none" {
 				t.Errorf("unexpected backup request: %s %v", r.Method, r.Form)
 			}
 			id := r.Form.Get("vmid")
@@ -125,6 +125,90 @@ func TestProxmoxSequentialBackupAndArchivedLogs(t *testing.T) {
 	defer hook.Close()
 	if err := sendNotice(context.Background(), hook.Client(), hook.URL, *got); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestBackupNotificationCompatibility(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		modes []string
+		other bool
+	}{
+		{name: "modern", modes: []string{"none"}},
+		{name: "legacy", modes: []string{"none", "legacy-sendmail"}},
+		{name: "no notification-mode option", modes: []string{"none", "legacy-sendmail", ""}},
+		{name: "unrelated validation failure", modes: []string{"none"}, other: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var mu sync.Mutex
+			var modes []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				mu.Lock()
+				defer mu.Unlock()
+				if err := req.ParseForm(); err != nil {
+					t.Error(err)
+					w.WriteHeader(400)
+					return
+				}
+				modes = append(modes, req.Form.Get("notification-mode"))
+				if len(modes) > 1 && (!req.Form.Has("mailto") || req.Form.Get("mailto") != "") {
+					t.Error("fallback must override configured SMTP recipients")
+				}
+				if tc.other || len(modes) < len(tc.modes) {
+					field := "notification-mode"
+					if tc.other {
+						field = "storage"
+					}
+					w.WriteHeader(400)
+					_ = json.NewEncoder(w).Encode(map[string]any{"errors": map[string]string{field: "parameter rejected"}})
+					return
+				}
+				_ = json.NewEncoder(w).Encode(map[string]string{"data": "UPID:pve:00000001:00000001:00000001:vzdump:101:test@pve:"})
+			}))
+			defer server.Close()
+			client := &pveClient{server.URL, "fixture", server.Client()}
+			_, err := client.start(context.Background(), "pve", 101, "pbs")
+			if (err != nil) != tc.other {
+				t.Errorf("start error: %v", err)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if !slices.Equal(modes, tc.modes) {
+				t.Errorf("notification modes: got %v, want %v", modes, tc.modes)
+			}
+		})
+	}
+}
+
+func TestPerPlanFailureEmail(t *testing.T) {
+	on, off := true, false
+	for _, tc := range []struct {
+		name  string
+		state string
+		mail  *bool
+		want  bool
+	}{
+		{name: "existing plans retain failure mail", state: failed, want: true},
+		{name: "enabled on failure", state: failed, mail: &on, want: true},
+		{name: "disabled on failure", state: failed, mail: &off},
+		{name: "enabled on success", state: success, mail: &on},
+		{name: "enabled when outcome needs review", state: uncertain, mail: &on, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			worker := testRunner(t, nil)
+			worker.mailer = &smtpMailer{}
+			job := Run{ID: "run", State: running, Plan: Plan{MailOnError: tc.mail}, Steps: []Step{{State: tc.state}}}
+			worker.change(func(s *State) error { s.Runs = append(s.Runs, job); return nil })
+			worker.execute(context.Background(), job)
+			state := worker.store.snapshot()
+			finished := state.run(job.ID)
+			if (finished.EmailNotice != nil) != tc.want {
+				t.Errorf("mail queued: got %v, want %v", finished.EmailNotice != nil, tc.want)
+			}
+			if (finished.Notice != nil) != (tc.state != success) {
+				t.Errorf("webhook changed for state %s", tc.state)
+			}
+		})
 	}
 }
 

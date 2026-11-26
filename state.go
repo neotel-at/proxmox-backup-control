@@ -32,6 +32,7 @@ type Plan struct {
 	TargetNode  string  `json:"target_node,omitempty"`
 	Guests      []Guest `json:"guests"`
 	Continue    bool    `json:"continue_on_error"`
+	MailOnError *bool   `json:"mail_on_error,omitempty"`
 }
 type Step struct {
 	Guest    Guest  `json:"guest"`

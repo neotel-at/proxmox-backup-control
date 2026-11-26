@@ -228,6 +228,7 @@ function resetEditor() {
   chosenTarget = "";
   el("plan-name").value = "";
   el("continue").checked = false;
+  el("mail-on-error").checked = true;
   el("editor-title").textContent = "Backupplan erstellen";
   el("reset-editor").hidden = true;
   renderInventory();
@@ -271,6 +272,7 @@ function renderPlans() {
         el("cluster").value = plan.cluster;
         el("plan-name").value = plan.name;
         el("continue").checked = plan.continue_on_error;
+        el("mail-on-error").checked = plan.mail_on_error ?? true;
         el("editor-title").textContent = "Backupplan bearbeiten";
         el("reset-editor").hidden = false;
         location.hash = "inventory";
@@ -416,7 +418,8 @@ el("plan-form").addEventListener("submit", event => {
   event.preventDefault();
   const payload = {
     id: state.edit, name: el("plan-name").value, cluster: el("cluster").value,
-    storage: el("storage").value, vmids: state.selected, continue_on_error: el("continue").checked
+    storage: el("storage").value, vmids: state.selected, continue_on_error: el("continue").checked,
+    mail_on_error: el("mail-on-error").checked
   };
   el("save").disabled = true;
   void action(async () => {

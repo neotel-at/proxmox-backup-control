@@ -1,5 +1,10 @@
 # PVE Backup GUI
 
+## 0.3.5 · 26. November 2026
+
+- **Mail on error** pro Backupplan. Die GUI sendet E-Mails nach fehlgeschlagenen oder ungeklärten Läufen, wenn die Option aktiv und SMTP konfiguriert ist.
+- Proxmox-eigene Backup-Benachrichtigungen werden für von der GUI gestartete Backups unterdrückt.
+
 ## 0.3.4 · 25. November 2026
 
 - Journalmeldungen für Start, Wiederaufnahme und Abschluss von Backup-Läufen sowie bestätigten E-Mail-Versand.

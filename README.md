@@ -35,10 +35,10 @@ API-Referenzen von Proxmox
 
 ## Debian-Paket installieren
 
-Das Release-Paket `pve-backup-gui_0.3.4_amd64.deb` ist für Debian auf x86-64. Für andere unterstützte Architekturen kann das Paket aus dem Quellpaket gebaut werden.
+Das Release-Paket `pve-backup-gui_0.3.5_amd64.deb` ist für Debian auf x86-64. Für andere unterstützte Architekturen kann das Paket aus dem Quellpaket gebaut werden.
 
 ```sh
-sudo apt install ./pve-backup-gui_0.3.4_amd64.deb
+sudo apt install ./pve-backup-gui_0.3.5_amd64.deb
 sudo install -m 0640 -o root -g pve-backup-gui \
   /usr/share/doc/pve-backup-gui/examples/config.example.json /etc/pve-backup-gui/config.json
 sudoedit /etc/pve-backup-gui/config.json /etc/pve-backup-gui/secret.env
@@ -138,7 +138,7 @@ Hinterlegen Sie `PVE_SMTP_PASSWORD` in `/etc/pve-backup-gui/secret.env` und star
 
 Für einen internen SMTP-Relay in einem vertrauenswürdigen Netz kann `"tls_mode": "plain"` gesetzt werden. Der Standardport für diesen Modus ist 25. Lassen Sie `username`, `password_env` und `ca_file` weg. Die Nachricht einschließlich Backup-Fehlerdetails wird in diesem Modus unverschlüsselt an den Relay übertragen.
 
-Die GUI sendet pro fehlgeschlagenem oder ungeklärtem Lauf eine Nachricht mit Plan, Cluster, Ziel, Lauf-ID und den betroffenen Gästen. Der Verlauf zeigt den Versandstatus. Bei Zustellfehlern folgen bis zu vier Wiederholungen. Webhook und E-Mail können gleichzeitig konfiguriert werden. Weglassen von `smtp` oder `"smtp": null` deaktiviert E-Mail.
+Mit **Mail on error** sendet die GUI pro fehlgeschlagenem oder ungeklärtem Lauf eine Nachricht mit Plan, Cluster, Ziel, Lauf-ID und den betroffenen Gästen. Der Verlauf zeigt den Versandstatus. Bei Zustellfehlern folgen bis zu vier Wiederholungen. Webhook und E-Mail können gleichzeitig konfiguriert werden. Die Option ist pro Backupplan einstellbar und bei bestehenden Plänen standardmäßig aktiv. Für durch die GUI gestartete Backups unterdrückt die GUI Proxmox-eigene Backup-Benachrichtigungen, damit Proxmox keine zusätzlichen Meldungen pro Gast versendet. Weglassen von `smtp` oder `"smtp": null` deaktiviert E-Mail.
 
 ## Dienstjournal
 

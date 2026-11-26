@@ -118,6 +118,7 @@ func noRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastRe
 type pveError struct {
 	code   int
 	detail string
+	fields map[string]string
 }
 
 func (e *pveError) Error() string { return fmt.Sprintf("Proxmox HTTP %d: %s", e.code, e.detail) }
@@ -151,7 +152,10 @@ func (p *pveClient) request(ctx context.Context, method, path string, form url.V
 			messages = append(messages, key+": "+value)
 		}
 		slices.Sort(messages)
-		return &pveError{resp.StatusCode, strings.TrimSpace(strings.Join(append([]string{resp.Status, problem.Message}, messages...), " "))}
+		return &pveError{
+			code: resp.StatusCode, detail: strings.TrimSpace(strings.Join(append([]string{resp.Status, problem.Message}, messages...), " ")),
+			fields: problem.Errors,
+		}
 	}
 	var envelope struct{ Data json.RawMessage }
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 32<<20)).Decode(&envelope); err != nil {
@@ -186,13 +190,27 @@ var errBackupNotStarted = errors.New("Proxmox startete keinen Backup-Task. Gast 
 
 func (p *pveClient) start(ctx context.Context, node string, id int, storage string) (string, error) {
 	var upid string
-	err := p.request(ctx, "POST", nodePath(node)+"/vzdump", url.Values{
-		"vmid":           {strconv.Itoa(id)},
-		"storage":        {storage},
-		"mode":           {"snapshot"},
-		"remove":         {"0"},
-		"notes-template": {"{{guestname}}"},
-	}, &upid)
+	path := nodePath(node) + "/vzdump"
+	form := url.Values{
+		"vmid":              {strconv.Itoa(id)},
+		"storage":           {storage},
+		"mode":              {"snapshot"},
+		"remove":            {"0"},
+		"notes-template":    {"{{guestname}}"},
+		"notification-mode": {"none"},
+	}
+	err := p.request(ctx, "POST", path, form, &upid)
+	if rejectsNotificationMode(err) {
+		// An explicit parameter validation failure means no backup was started.
+		form.Set("notification-mode", "legacy-sendmail")
+		form.Set("mailto", "")
+		err = p.request(ctx, "POST", path, form, &upid)
+		if rejectsNotificationMode(err) {
+			// Proxmox releases without notification-mode only use legacy mail.
+			form.Del("notification-mode")
+			err = p.request(ctx, "POST", path, form, &upid)
+		}
+	}
 	if err == nil {
 		if upid == "OK" {
 			return "", errBackupNotStarted
@@ -204,6 +222,15 @@ func (p *pveClient) start(ctx context.Context, node string, id int, storage stri
 	}
 	return upid, err
 }
+func rejectsNotificationMode(err error) bool {
+	var apiErr *pveError
+	if !errors.As(err, &apiErr) || apiErr.code != http.StatusBadRequest || len(apiErr.fields) != 1 {
+		return false
+	}
+	_, rejected := apiErr.fields["notification-mode"]
+	return rejected
+}
+
 func (p *pveClient) status(ctx context.Context, node, upid string) (TaskStatus, error) {
 	var status TaskStatus
 	err := p.request(ctx, "GET", taskPath(node, upid)+"/status", nil, &status)

@@ -142,7 +142,7 @@ func (r *runner) execute(ctx context.Context, job Run) {
 			if r.webhook != "" {
 				saved.Notice = &Notice{Next: now, Status: queued}
 			}
-			if r.mailer != nil {
+			if r.mailer != nil && (saved.Plan.MailOnError == nil || *saved.Plan.MailOnError) {
 				saved.EmailNotice = &Notice{Next: now, Status: queued}
 			}
 		}
